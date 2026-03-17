@@ -1,0 +1,83 @@
+name: Firmware Build
+
+on:
+  push:
+    branches: [ main, setup/github-actions ]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2:00 UTC
+
+env:
+  RK_JOBS: 4
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            build-essential \
+            git \
+            curl \
+            wget \
+            bc \
+            cmake \
+            dtc \
+            libssl-dev \
+            device-tree-compiler \
+            python3 \
+            python3-dev \
+            rsync \
+            flex \
+            bison
+
+      - name: Setup build environment
+        run: |
+          cd SDK/rv1106-sdk
+          chmod +x build.sh
+          # Source board config
+          mkdir -p config
+
+      - name: Build firmware (lunch)
+        run: |
+          cd SDK/rv1106-sdk
+          echo "7" | ./build.sh lunch || true
+
+      - name: Build complete image
+        run: |
+          cd SDK/rv1106-sdk
+          ./build.sh all || ./build.sh allsave
+        timeout-minutes: 240
+
+      - name: Upload firmware artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: firmware-${{ github.run_number }}
+          path: SDK/rv1106-sdk/output/image/
+          retention-days: 30
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-logs-${{ github.run_number }}
+          path: SDK/rv1106-sdk/output/
+          retention-days: 7
+
+      - name: Notify on completion
+        if: always()
+        run: |
+          echo "Build Status: ${{ job.status }}"
+          echo "Artifacts available in workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
