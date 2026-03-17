@@ -18,7 +18,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
@@ -46,7 +46,6 @@ jobs:
         run: |
           cd SDK/rv1106-sdk
           chmod +x build.sh
-          # Source board config
           mkdir -p config
 
       - name: Build firmware (lunch)
@@ -62,22 +61,24 @@ jobs:
 
       - name: Upload firmware artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: firmware-${{ github.run_number }}
           path: SDK/rv1106-sdk/output/image/
           retention-days: 30
+          if-no-files-found: ignore
 
       - name: Upload build logs
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build-logs-${{ github.run_number }}
           path: SDK/rv1106-sdk/output/
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Notify on completion
         if: always()
         run: |
           echo "Build Status: ${{ job.status }}"
-          echo "Artifacts available in workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
