@@ -1,0 +1,30 @@
+name: Lint & Validate
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Validate Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+      - name: Validate docker-compose.yml
+        run: |
+          docker run --rm -v $PWD:/workspace -w /workspace \
+            ghcr.io/compose-spec/compose-spec:latest \
+            compose-spec docker-compose.yml
+
+      - name: Lint YAML workflows
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: .github/workflows
+          config_data: relaxed
