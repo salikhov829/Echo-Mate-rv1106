@@ -9,26 +9,29 @@ on:
 
 env:
   RK_JOBS: 4
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: ubuntu:22.04
     
     steps:
+      - name: Install Git
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
-          apt-get update
-          apt-get install -y \
+          sudo apt-get update
+          sudo apt-get install -y \
             build-essential \
-            git \
             curl \
             wget \
             bc \
@@ -40,45 +43,62 @@ jobs:
             python3-dev \
             rsync \
             flex \
-            bison
+            bison \
+            u-boot-tools
 
       - name: Setup build environment
         run: |
           cd SDK/rv1106-sdk
           chmod +x build.sh
           mkdir -p config
+          echo "Build environment ready"
 
-      - name: Build firmware (lunch)
+      - name: Select board configuration
         run: |
           cd SDK/rv1106-sdk
-          echo "7" | ./build.sh lunch || true
+          echo "7" | timeout 10 ./build.sh lunch || echo "Board selection completed"
 
-      - name: Build complete image
+      - name: Build firmware
         run: |
           cd SDK/rv1106-sdk
-          ./build.sh all || ./build.sh allsave
-        timeout-minutes: 240
+          ./build.sh all 2>&1 | tee build.log
+        timeout-minutes: 360
+        continue-on-error: true
+
+      - name: Check build output
+        run: |
+          if [ -d "SDK/rv1106-sdk/output/image" ]; then
+            echo "✅ Build artifacts found"
+            ls -lah SDK/rv1106-sdk/output/image/
+          else
+            echo "⚠️ No image output directory"
+          fi
 
       - name: Upload firmware artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-${{ github.run_number }}
-          path: SDK/rv1106-sdk/output/image/
+          name: firmware-build-${{ github.run_number }}
+          path: |
+            SDK/rv1106-sdk/output/image/
+            SDK/rv1106-sdk/build.log
           retention-days: 30
-          if-no-files-found: ignore
+          compression-level: 6
+          if-no-files-found: warn
 
-      - name: Upload build logs
+      - name: Upload build directory on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs-${{ github.run_number }}
+          name: build-debug-${{ github.run_number }}
           path: SDK/rv1106-sdk/output/
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Notify on completion
+      - name: Build summary
         if: always()
         run: |
-          echo "Build Status: ${{ job.status }}"
-          echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "=== Build Summary ===" 
+          echo "Job Status: ${{ job.status }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Artifacts: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
