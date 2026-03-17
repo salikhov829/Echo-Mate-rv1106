@@ -52,64 +52,64 @@ jobs:
           echo "=== rv1106-sdk Structure ==="
           ls -la SDK/rv1106-sdk/ || echo "rv1106-sdk not found"
 
-      - name: Make build script executable
+      - name: Make build scripts executable
         run: |
           chmod +x SDK/rv1106-sdk/build.sh
-          ls -la SDK/rv1106-sdk/build.sh
+          chmod +x SDK/rv1106-sdk/project/build.sh
 
       - name: Show available board configs
         run: |
-          cd SDK/rv1106-sdk
-          find . -name "BoardConfig*.mk" -type f 2>/dev/null | head -20 || echo "No BoardConfig files found"
+          echo "=== Available BoardConfig files ==="
+          find SDK/rv1106-sdk/project/cfg -name "BoardConfig*.mk" -type f 2>/dev/null | sort || echo "No BoardConfig files found"
 
-      - name: Prepare build environment
+      - name: Select board configuration (non-interactive)
         run: |
           cd SDK/rv1106-sdk
-          mkdir -p config output/image output/out
-          echo "Build directories created"
+          BOARD_CONFIG_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SD_CARD-Buildroot-RV1106_Echo_Mate-DeskMate.mk"
+          echo "=== Selecting board config: ${BOARD_CONFIG_FILE} ==="
+          ln -rfs "${BOARD_CONFIG_FILE}" .BoardConfig.mk
+          echo "=== BoardConfig symlink created ==="
+          ls -la .BoardConfig.mk
+          echo "=== BoardConfig contents ==="
+          cat .BoardConfig.mk
 
-      - name: Run build script
+      - name: Run full firmware build
         id: build
         run: |
-          cd SDK/rv1106-sdk
-          # Try to run the build
-          timeout 600 bash -c './build.sh lunch 2>&1 | head -50' || true
-          echo "Build script executed"
+          cd SDK/rv1106-sdk/project
+          echo "=== Starting full firmware build (allsave) ==="
+          timeout 7200 ./build.sh allsave 2>&1 | tee build.log
+          echo "=== Build completed ==="
 
       - name: Check build output
         if: always()
         run: |
-          echo "=== Checking for build artifacts ==="
+          echo "=== Firmware images in output/image ==="
           if [ -d "SDK/rv1106-sdk/output/image" ]; then
-            echo "✅ output/image directory found"
-            find SDK/rv1106-sdk/output/image -type f -exec ls -lh {} \; | head -20
+            find SDK/rv1106-sdk/output/image -type f | sort | xargs -I{} ls -lh {}
           else
-            echo "❌ output/image not found"
-          fi
-          
-          echo ""
-          echo "=== Checking output directory ==="
-          if [ -d "SDK/rv1106-sdk/output" ]; then
-            find SDK/rv1106-sdk/output -type f -name "*.img" 2>/dev/null | head -20
-            find SDK/rv1106-sdk/output -type f -name "*.log" 2>/dev/null | head -20
+            echo "❌ output/image directory not found"
           fi
 
-      - name: Create dummy artifacts for testing
-        if: always()
-        run: |
-          mkdir -p SDK/rv1106-sdk/output/image
-          echo "Build process started - check logs for details" > SDK/rv1106-sdk/output/image/README.md
-          echo "$(date)" >> SDK/rv1106-sdk/output/image/README.md
-          ls -la SDK/rv1106-sdk/output/image/
-
-      - name: Upload build artifacts
+      - name: Upload firmware images
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-build-${{ github.run_number }}
-          path: SDK/rv1106-sdk/output/
+          name: firmware-${{ github.run_number }}
+          path: |
+            SDK/rv1106-sdk/output/image/*.img
+            SDK/rv1106-sdk/output/image/*.bin
           retention-days: 30
           if-no-files-found: warn
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_number }}
+          path: SDK/rv1106-sdk/project/build.log
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Summary
         if: always()
@@ -118,5 +118,7 @@ jobs:
           echo "Status: ${{ job.status }}"
           echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           echo ""
-          echo "📝 Note: First run is for validation."
-          echo "Full build requires proper SDK setup and dependencies."
+          if [ -d "SDK/rv1106-sdk/output/image" ]; then
+            echo "=== Generated firmware files ==="
+            find SDK/rv1106-sdk/output/image -type f -name "*.img" -o -name "*.bin" | sort
+          fi
